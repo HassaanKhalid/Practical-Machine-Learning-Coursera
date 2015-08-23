@@ -1,0 +1,123 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Hassaan Khalid"
+date: "Sunday, August 23, 2015"
+output: html_document
+---
+#Data Preparation
+##Loading Packages
+```{r, echo=TRUE, results='hide'}
+library(caret)
+library(dplyr)
+library(randomForest)
+library(e1071)
+```
+
+##Loading data
+```{r}
+training <- read.csv("pml-training.csv", header=TRUE)
+testing <- read.csv("pml-testing.csv", header=TRUE)
+set.seed(1812)
+```
+
+##Creating Partitions in Training Data
+```{r}
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=F)
+ptrain1 <- training[inTrain, ]
+ptrain2 <- training[-inTrain, ]
+```
+The above partition has been created in order to test the models before running it on the validation set. The model will be created on the initial 70% of the data and will be tested on the other 30%. 
+
+##Removing Variables with Near Zero Variance
+```{r}
+nzv <- nearZeroVar(ptrain1)
+ptrain1 <- ptrain1[, -nzv]
+ptrain2 <- ptrain2[, -nzv]
+```
+The above removes variables with almost zero variance from both the training segments. 
+
+##Removing Variables which are mostly NA
+```{r}
+mostlyNA <- sapply(ptrain1, function(x) mean(is.na(x))) > 0.95
+ptrain1 <- ptrain1[, mostlyNA==F]
+ptrain2 <- ptrain2[, mostlyNA==F]
+```
+The above removes variables with almost all NA values from both the training segments.
+
+##Removing Variables which make no Intuitive Sense i.e X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp
+```{r}
+ptrain1 <- ptrain1[, -(1:5)]
+ptrain2 <- ptrain2[, -(1:5)]
+```
+
+#Data Modeling
+##Choosing Model Using Random Forest
+```{r}
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+fit <- train(classe ~ ., data=ptrain1, method="rf", trControl=fitControl)
+fit$finalModel
+```
+The above serves to choose the best model by using random forests.
+
+##Fitting Random Forest Model to Training Dataset 2
+```{r}
+preds <- predict(fit, newdata=ptrain2)
+confusionMatrix(ptrain2$classe, preds)
+```
+As can be seen from the confusion matrix, the sensitivity, specificity, positive predictive value and negative predictive value are above 99% which shows high accuracy in the model. The overall accuracy is 99.75% which shows the model is highly accurate. This is the out of sample error rate for the model i.e. 0.25%.
+
+#Retraining the Model on Complete Data for Accuracy
+The model chosen above is retrained on the entire training data set following the same procedure as was sued above.
+
+## remove variables with nearly zero variance
+```{r}
+nzv <- nearZeroVar(training)
+ptrain <- training[, -nzv]
+ptest <- testing[, -nzv]
+```
+
+## remove variables that are almost always NA
+```{r}
+mostlyNA <- sapply(ptrain, function(x) mean(is.na(x))) > 0.95
+ptrain <- ptrain[, mostlyNA==F]
+ptest <- ptest[, mostlyNA==F]
+```
+
+##remove variables that don't make intuitive sense for prediction (X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp), which happen to be the first five variables
+```{r}
+ptrain <- ptrain[, -(1:5)]
+ptest <- ptest[, -(1:5)]
+```
+
+##Re-fit Model Using Full Training Set
+```{r}
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+fit <- train(classe ~ ., data=ptrain, method="rf", trControl=fitControl)
+```
+
+#Predict on Test Set
+```{r}
+preds <- predict(fit, newdata=testing)
+```
+This predicts the answers to the 20 samples of the testing data set of the project.
+
+## convert predictions to character vector
+```{r}
+preds <- as.character(preds)
+```
+
+#Creating Output Files
+```{r, results='hide'}
+pml_write_files <- function(x) {
+  n <- length(x)
+  for(i in 1:n) {
+    filename <- paste0("problem_id_", i, ".txt")
+    write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+  }
+}
+```
+
+## create prediction files to submit
+```{r, results='hide'}
+pml_write_files(preds)
+```
